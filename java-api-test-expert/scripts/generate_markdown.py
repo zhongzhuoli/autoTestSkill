@@ -10,19 +10,8 @@ import json
 import os
 import sys
 
-
-def load_model(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def get_output_prefix(model):
-    mode = model.get("scanMode", "full")
-    if mode == "module" and model.get("moduleName"):
-        return model["moduleName"] + "_module"
-    elif mode == "controller" and model.get("controllerName"):
-        return model["controllerName"]
-    return "test_plan"
+sys.path.insert(0, os.path.dirname(__file__))
+from shared_utils import load_model, get_output_prefix, ensure_output_dir
 
 
 def write_file(path, content):
@@ -32,7 +21,7 @@ def write_file(path, content):
 
 
 # ====== scan_summary.md ======
-def gen_scan_summary(model):
+def gen_scan_summary(model, prefix):
     mode_map = {"full": "完整项目模式", "module": "模块级扫描模式", "controller": "单 Controller 模式"}
     mode_label = mode_map.get(model.get("scanMode", "full"), "未知")
     stats = model.get("statistics", {})
@@ -61,12 +50,13 @@ def gen_scan_summary(model):
 
 | 文件 | 说明 |
 |---|---|
-| test_cases.xlsx | Excel 格式测试用例 |
+| {prefix}_test_cases.xlsx | Excel 格式测试用例 |
 | test_cases.md | Markdown 格式测试用例 |
-| jmeter_test_plan.jmx | JMeter 脚本 |
-| cases.csv | JMeter 参数化数据 |
+| {prefix}_test_plan.jmx | JMeter 脚本 |
+| {prefix}_cases.csv | JMeter 参数化数据 |
+| {prefix}_jmeter_variables.properties | JMeter 环境变量 |
 | risk_report.md | 风险报告 |
-| run_jmeter.md | JMeter 执行说明 |
+| run_{prefix}.md | JMeter 执行说明 |
 """
 
 
@@ -78,6 +68,8 @@ def gen_api_list(model):
     current_module = None
     current_controller = None
 
+    counter = {}
+
     for api in apis:
         module = api.get("moduleName", "")
         controller = api.get("controllerName", "")
@@ -86,15 +78,17 @@ def gen_api_list(model):
             lines.append(f"\n## 模块：{module}\n")
             current_module = module
             current_controller = None
+            counter = {}
 
         if controller != current_controller:
             lines.append(f"\n### Controller：{controller}\n")
             lines.append("| 序号 | 接口名称 | 请求方法 | 路径 | 入参类型 | 是否鉴权 | 是否危险 | 解析状态 |")
-            lines.append("| ---: | --- | --- | --- | --- | --- | --- | --- |")
+            lines.append("| ---: | --- | --- | --- | --- | --- | --- |")
             current_controller = controller
 
-        idx = len([a for a in apis[:apis.index(api) + 1]
-                    if a.get("moduleName") == module and a.get("controllerName") == controller])
+        key = (module, controller)
+        counter[key] = counter.get(key, 0) + 1
+        idx = counter[key]
         lines.append(
             f"| {idx} | {api.get('apiName', '')} | {api.get('method', '')} | "
             f"{api.get('path', '')} | {api.get('requestBodyType', '')} | "
@@ -332,14 +326,14 @@ def main():
     model_path = sys.argv[1]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(model_path)
 
-    os.makedirs(output_dir, exist_ok=True)
+    ensure_output_dir(output_dir)
 
     model = load_model(model_path)
     prefix = get_output_prefix(model)
 
     # 生成所有 Markdown 文件
     files = {
-        "scan_summary.md": gen_scan_summary(model),
+        "scan_summary.md": gen_scan_summary(model, prefix),
         "api_list.md": gen_api_list(model),
         "test_cases.md": gen_test_cases(model),
         "risk_report.md": gen_risk_report(model),

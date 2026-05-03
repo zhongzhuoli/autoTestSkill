@@ -1,2 +1,6 @@
 规范.md
 需求.md
+*.skill
+__pycache__/
+test_output/
+test_model*.json

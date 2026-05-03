@@ -11,19 +11,8 @@ import json
 import os
 import sys
 
-
-def load_model(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def get_output_prefix(model):
-    mode = model.get("scanMode", "full")
-    if mode == "module" and model.get("moduleName"):
-        return model["moduleName"] + "_module"
-    elif mode == "controller" and model.get("controllerName"):
-        return model["controllerName"]
-    return "test_plan"
+sys.path.insert(0, os.path.dirname(__file__))
+from shared_utils import load_model, get_output_prefix, ensure_output_dir
 
 
 CSV_FIELDS = [
@@ -71,7 +60,7 @@ def main():
     model_path = sys.argv[1]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(model_path)
 
-    os.makedirs(output_dir, exist_ok=True)
+    ensure_output_dir(output_dir)
 
     model = load_model(model_path)
     prefix = get_output_prefix(model)
