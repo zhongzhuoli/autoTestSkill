@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/29651/.claude/skills/skill-creator/scripts/**)",
+      "Bash(python \"C:/Users/29651/.claude/skills/skill-creator/scripts/init_skill.py\" java-api-test-expert --path \"d:/Work item/GitHub_Item/autoTestSkill\")",
+      "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/29651/.claude/skills/skill-creator/scripts/init_skill.py\" java-api-test-expert --path \"d:/Work item/GitHub_Item/autoTestSkill\")",
+      "Bash(PYTHONIOENCODING=utf-8 python \"d:/Work item/GitHub_Item/autoTestSkill/java-api-test-expert/scripts/generate_csv.py\" --help)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"d:/Work item/GitHub_Item/autoTestSkill/java-api-test-expert/scripts/generate_csv.py\")",
+      "Bash(PYTHONIOENCODING=utf-8 python \"d:/Work item/GitHub_Item/autoTestSkill/java-api-test-expert/scripts/generate_csv.py\" \"d:/Work item/GitHub_Item/autoTestSkill/test_model.json\" \"d:/Work item/GitHub_Item/autoTestSkill/test_output/\")",
+      "Bash(PYTHONIOENCODING=utf-8 python \"d:/Work item/GitHub_Item/autoTestSkill/java-api-test-expert/scripts/generate_jmx.py\" \"d:/Work item/GitHub_Item/autoTestSkill/test_model.json\" \"d:/Work item/GitHub_Item/autoTestSkill/test_output/\")"
+    ]
+  }
+}
