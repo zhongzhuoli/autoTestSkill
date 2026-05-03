@@ -53,13 +53,24 @@ def style_data(ws, row_count, col_count):
             cell.border = THIN_BORDER
 
 
+def _display_width(text):
+    """计算文本的显示宽度，CJK 字符算 2，其他算 1"""
+    width = 0
+    for ch in str(text):
+        if '一' <= ch <= '鿿' or '　' <= ch <= '〿' or '＀' <= ch <= '￯':
+            width += 2
+        else:
+            width += 1
+    return width
+
+
 def auto_width(ws, col_count, max_width=50):
     for col in range(1, col_count + 1):
         max_len = 0
         for row in ws.iter_rows(min_col=col, max_col=col, values_only=False):
             for cell in row:
                 val = str(cell.value) if cell.value else ""
-                max_len = max(max_len, len(val))
+                max_len = max(max_len, _display_width(val))
         ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = min(max_len + 4, max_width)
 
 
@@ -170,7 +181,7 @@ def write_jmeter_params_sheet(wb, model):
             "headers": json.dumps(headers_val, ensure_ascii=False),
             "queryParams": json.dumps(tc.get("queryParams", {}), ensure_ascii=False),
             "pathVariables": json.dumps(tc.get("pathVariables", {}), ensure_ascii=False),
-            "body": json.dumps(tc.get("requestBody", {}), ensure_ascii=False) if tc.get("requestBody") else "",
+            "body": json.dumps(tc.get("requestBody"), ensure_ascii=False) if tc.get("requestBody") else "",
             "expectedHttpStatus": str(tc.get("expectedHttpStatus", "")),
             "expectedBizCode": str(tc.get("expectedBizCode", "")),
             "enabled": str(tc.get("enabled", True)).lower(),

@@ -45,7 +45,7 @@ def flatten_case(tc):
 
     row["expectedHttpStatus"] = str(tc.get("expectedHttpStatus", ""))
     row["expectedBizCode"] = str(tc.get("expectedBizCode", ""))
-    row["expectedMessageContains"] = tc.get("expectedMessageContains", "")
+    row["expectedMessageContains"] = str(tc.get("expectedMessageContains") or "")
     row["enabled"] = str(tc.get("enabled", True)).lower()
     row["riskLevel"] = tc.get("riskLevel", "low")
 

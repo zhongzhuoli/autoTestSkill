@@ -28,3 +28,12 @@ def ensure_output_dir(output_dir):
     """确保输出目录存在"""
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
+
+
+def resolve_path_variables(path, path_variables):
+    """替换路径中的 {var} 占位符为实际值"""
+    if not path_variables:
+        return path
+    for k, v in path_variables.items():
+        path = path.replace("{" + str(k) + "}", str(v))
+    return path

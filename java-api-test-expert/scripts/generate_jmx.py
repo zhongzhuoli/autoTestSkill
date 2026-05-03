@@ -10,22 +10,28 @@ import json
 import os
 import sys
 import xml.etree.ElementTree as ET
-from xml.dom import minidom
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(__file__))
-from shared_utils import load_model, get_output_prefix, ensure_output_dir
+from shared_utils import load_model, get_output_prefix, ensure_output_dir, resolve_path_variables
+
+
+def _parse_base_url(base_url):
+    parsed = urlparse(base_url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port
+    if not port:
+        port = 443 if parsed.scheme == "https" else 8080
+    protocol = parsed.scheme or "http"
+    return protocol, host, str(port)
 
 
 def generate_properties(model, output_dir, prefix):
     base_url = model.get("baseUrl", "http://localhost:8080")
-    port_str = "8080"
-    if ":" in base_url.replace("https://", "").replace("http://", ""):
-        port_str = base_url.replace("https://", "").replace("http://", "").split(":")[1]
-    elif base_url.startswith("https"):
-        port_str = "443"
+    protocol, host, port_str = _parse_base_url(base_url)
 
     props = {
-        "baseUrl": base_url.split("://")[-1].split(":")[0] if "://" in base_url else base_url.split(":")[0],
+        "baseUrl": host,
         "port": port_str,
         "contextPath": model.get("contextPath", ""),
         "token": "PLEASE_INPUT_TOKEN",
@@ -91,7 +97,7 @@ def _build_csv_driven_jmx(model, prefix):
     defaults = ET.SubElement(tg_hash, "ConfigTestElement", guiclass="HttpDefaultsGui",
                              testclass="ConfigTestElement", testname="HTTP Request Defaults")
     base_url = model.get("baseUrl", "http://localhost:8080")
-    protocol = "https" if base_url.startswith("https") else "http"
+    protocol, _, _ = _parse_base_url(base_url)
     ET.SubElement(defaults, "stringProp", name="HTTPSampler.domain").text = "${baseUrl}"
     ET.SubElement(defaults, "stringProp", name="HTTPSampler.port").text = "${port}"
     ET.SubElement(defaults, "stringProp", name="HTTPSampler.protocol").text = protocol
@@ -228,12 +234,12 @@ def _build_per_case_jmx(model, prefix):
     tg_hash = ET.SubElement(tp_hash, "hashTree")
 
     base_url = model.get("baseUrl", "http://localhost:8080")
-    protocol = "https" if base_url.startswith("https") else "http"
+    protocol, _, _ = _parse_base_url(base_url)
 
     defaults = ET.SubElement(tg_hash, "ConfigTestElement", guiclass="HttpDefaultsGui",
                              testclass="ConfigTestElement", testname="HTTP Request Defaults")
     ET.SubElement(defaults, "stringProp", name="HTTPSampler.domain").text = base_url.split("://")[-1].split(":")[0] if "://" in base_url else base_url
-    port_str = base_url.replace("https://", "").replace("http://", "").split(":")[1] if ":" in base_url.replace("https://", "").replace("http://", "") else ("443" if protocol == "https" else "8080")
+    _, _, port_str = _parse_base_url(base_url)
     ET.SubElement(defaults, "stringProp", name="HTTPSampler.port").text = port_str
     ET.SubElement(defaults, "stringProp", name="HTTPSampler.protocol").text = protocol
     ET.SubElement(defaults, "stringProp", name="HTTPSampler.contentEncoding").text = "UTF-8"
@@ -253,6 +259,9 @@ def _build_per_case_jmx(model, prefix):
 
     # 每条用例独立 HTTPSampler
     for tc in model.get("testCases", []):
+        if tc.get("enabled") is False:
+            continue
+
         case_id = tc.get("caseId", "UNKNOWN")
         case_name = tc.get("caseName", "")
         label = f"{case_id}_{case_name}"
@@ -264,6 +273,19 @@ def _build_per_case_jmx(model, prefix):
         context_path = model.get("contextPath", "")
         if context_path:
             path = context_path + path
+
+        # Path variables: replace {var} placeholders in URL path before writing
+        pv = tc.get("pathVariables", {})
+        if pv:
+            for k, v in pv.items():
+                path = path.replace("{" + str(k) + "}", str(v))
+
+        # Query params appended to path
+        qp = tc.get("queryParams", {})
+        if qp:
+            qs = "&".join(f"{k}={v}" for k, v in qp.items())
+            path = path + ("?" if "?" not in path else "&") + qs
+
         ET.SubElement(sampler, "stringProp", name="HTTPSampler.path").text = path
         ET.SubElement(sampler, "boolProp", name="HTTPSampler.use_keepalive").text = "true"
         ET.SubElement(sampler, "boolProp", name="HTTPSampler.follow_redirects").text = "true"
@@ -276,17 +298,20 @@ def _build_per_case_jmx(model, prefix):
             arg = ET.SubElement(coll_prop, "elementProp", name="", elementType="HTTPArgument")
             ET.SubElement(arg, "stringProp", name="Argument.value").text = json.dumps(body, ensure_ascii=False)
 
-        # Path variables
-        pv = tc.get("pathVariables", {})
-        if pv:
-            for k, v in pv.items():
-                pv_elem = ET.SubElement(sampler, "elementProp", name="", elementType="HTTPArgument")
-                ET.SubElement(pv_elem, "stringProp", name="Argument.name").text = k
-                ET.SubElement(pv_elem, "stringProp", name="Argument.value").text = str(v)
-
         sampler_hash = ET.SubElement(tg_hash, "hashTree")
 
-        # Response Assertion
+        # Per-case request headers (if specified)
+        req_headers = tc.get("requestHeaders", {})
+        if req_headers:
+            hdr_mgr = ET.SubElement(sampler_hash, "HeaderManager", guiclass="HeaderPanel",
+                                    testclass="HeaderManager", testname=f"Headers {case_id}")
+            hdr_coll = ET.SubElement(hdr_mgr, "collectionProp", name="HeaderManager.headers")
+            for hk, hv in req_headers.items():
+                he = ET.SubElement(hdr_coll, "elementProp", name="", elementType="Header")
+                ET.SubElement(he, "stringProp", name="Header.name").text = str(hk)
+                ET.SubElement(he, "stringProp", name="Header.value").text = str(hv)
+
+        # Response Assertion - HTTP status
         expected_status = str(tc.get("expectedHttpStatus", 200))
         assertion = ET.SubElement(sampler_hash, "ResponseAssertion", guiclass="AssertionGui",
                                   testclass="ResponseAssertion", testname=f"Assert {case_id}")
@@ -295,14 +320,48 @@ def _build_per_case_jmx(model, prefix):
         coll_a = ET.SubElement(assertion, "collectionProp", name="Assertion.test_strings")
         ET.SubElement(coll_a, "stringProp", name="0").text = expected_status
 
+        # JSR223 Assertion - biz code check
+        expected_biz = tc.get("expectedBizCode", "")
+        expected_msg = tc.get("expectedMessageContains", "")
+        if expected_biz or expected_msg:
+            jsr = ET.SubElement(sampler_hash, "JSR223Assertion", guiclass="TestBeanGUI",
+                                testclass="JSR223Assertion", testname=f"BizAssert {case_id}")
+            ET.SubElement(jsr, "stringProp", name="scriptLanguage").text = "groovy"
+            jsr_lines = []
+            if expected_biz:
+                jsr_lines.append(
+                    'String expectedBizCode = "' + str(expected_biz).replace('"', '\\"') + '";\n'
+                    'String response = prev.getResponseDataAsString();\n'
+                    'if (expectedBizCode != null && !expectedBizCode.isEmpty()) {\n'
+                    '    try {\n'
+                    '        def json = new groovy.json.JsonSlurper().parseText(response);\n'
+                    '        def actualCode = json.code != null ? json.code.toString() : "";\n'
+                    '        if (actualCode != expectedBizCode) {\n'
+                    '            prev.setSuccessful(false);\n'
+                    '            SampleResult.setResponseMessage("Expected bizCode=" + expectedBizCode + ", actual=" + actualCode);\n'
+                    '        }\n'
+                    '    } catch (Exception e) { }\n'
+                    '}'
+                )
+            if expected_msg:
+                jsr_lines.append(
+                    'String expectedMsg = "' + str(expected_msg).replace('"', '\\"') + '";\n'
+                    'String response = prev.getResponseDataAsString();\n'
+                    'if (expectedMsg != null && !expectedMsg.isEmpty()) {\n'
+                    '    if (response == null || !response.contains(expectedMsg)) {\n'
+                    '        prev.setSuccessful(false);\n'
+                    '        SampleResult.setResponseMessage("Response does not contain: " + expectedMsg);\n'
+                    '    }\n'
+                    '}'
+                )
+            ET.SubElement(jsr, "stringProp", name="script").text = "\n".join(jsr_lines)
+
     return root
 
 
 def prettify_xml(elem):
-    rough = ET.tostring(elem, encoding="unicode")
-    parsed = minidom.parseString(rough)
-    lines = parsed.toprettyxml(indent="  ").split("\n")
-    return "\n".join(line for line in lines if line.strip())
+    ET.indent(elem, space="  ")
+    return ET.tostring(elem, encoding="unicode")
 
 
 def main():

@@ -20,6 +20,13 @@ def write_file(path, content):
     print(f"  生成: {path}")
 
 
+def esc(text):
+    """转义 Markdown 表格中的管道符"""
+    if text is None:
+        return ""
+    return str(text).replace("|", "\\|")
+
+
 # ====== scan_summary.md ======
 def gen_scan_summary(model, prefix):
     mode_map = {"full": "完整项目模式", "module": "模块级扫描模式", "controller": "单 Controller 模式"}
@@ -83,17 +90,17 @@ def gen_api_list(model):
         if controller != current_controller:
             lines.append(f"\n### Controller：{controller}\n")
             lines.append("| 序号 | 接口名称 | 请求方法 | 路径 | 入参类型 | 是否鉴权 | 是否危险 | 解析状态 |")
-            lines.append("| ---: | --- | --- | --- | --- | --- | --- |")
+            lines.append("| ---: | --- | --- | --- | --- | --- | --- | --- |")
             current_controller = controller
 
         key = (module, controller)
         counter[key] = counter.get(key, 0) + 1
         idx = counter[key]
         lines.append(
-            f"| {idx} | {api.get('apiName', '')} | {api.get('method', '')} | "
-            f"{api.get('path', '')} | {api.get('requestBodyType', '')} | "
-            f"{api.get('authRequired', '')} | {api.get('dangerous', '')} | "
-            f"{api.get('parseStatus', '')} |"
+            f"| {idx} | {esc(api.get('apiName', ''))} | {esc(api.get('method', ''))} | "
+            f"{esc(api.get('path', ''))} | {esc(api.get('requestBodyType', ''))} | "
+            f"{esc(api.get('authRequired', ''))} | {esc(api.get('dangerous', ''))} | "
+            f"{esc(api.get('parseStatus', ''))} |"
         )
 
     if not apis:
@@ -118,10 +125,10 @@ def gen_test_cases(model):
             current_api = api_key
 
         lines.append(
-            f"| {tc.get('caseId', '')} | {tc.get('caseName', '')} | "
-            f"{tc.get('caseType', '')} | {tc.get('field', '')} | "
-            f"{tc.get('description', '')} | {tc.get('expectedHttpStatus', '')} | "
-            f"{tc.get('expectedBizCode', '')} | {tc.get('enabled', True)} | "
+            f"| {esc(tc.get('caseId', ''))} | {esc(tc.get('caseName', ''))} | "
+            f"{esc(tc.get('caseType', ''))} | {esc(tc.get('field', ''))} | "
+            f"{esc(tc.get('description', ''))} | {tc.get('expectedHttpStatus', '')} | "
+            f"{esc(tc.get('expectedBizCode', ''))} | {tc.get('enabled', True)} | "
             f"{tc.get('needManualConfirm', False)} |"
         )
 
@@ -142,8 +149,8 @@ def gen_risk_report(model):
         lines.append("| --- | --- | --- | --- |")
         for r in risks:
             lines.append(
-                f"| {r.get('api', '')} | {r.get('riskType', '')} | "
-                f"{r.get('reason', '')} | {r.get('suggestion', '')} |"
+                f"| {esc(r.get('api', ''))} | {esc(r.get('riskType', ''))} | "
+                f"{esc(r.get('reason', ''))} | {esc(r.get('suggestion', ''))} |"
             )
     else:
         lines.append("未识别到风险。")
@@ -161,9 +168,9 @@ def gen_manual_confirm(model):
         lines.append("| --- | --- | --- | --- | --- |")
         for item in items:
             lines.append(
-                f"| {item.get('id', '')} | {item.get('type', '')} | "
-                f"{item.get('location', '')} | {item.get('problem', '')} | "
-                f"{item.get('suggestion', '')} |"
+                f"| {esc(item.get('id', ''))} | {esc(item.get('type', ''))} | "
+                f"{esc(item.get('location', ''))} | {esc(item.get('problem', ''))} | "
+                f"{esc(item.get('suggestion', ''))} |"
             )
     else:
         lines.append("无需人工确认项。")
@@ -181,9 +188,9 @@ def gen_dangerous_apis(model):
         lines.append("| --- | --- | --- | --- | --- | --- |")
         for api in apis:
             lines.append(
-                f"| {api.get('apiName', '')} | {api.get('method', '')} | "
-                f"{api.get('path', '')} | {api.get('dangerKeyword', '')} | "
-                f"{api.get('riskLevel', 'high')} | {api.get('excludeFromPerf', True)} |"
+                f"| {esc(api.get('apiName', ''))} | {esc(api.get('method', ''))} | "
+                f"{esc(api.get('path', ''))} | {esc(api.get('dangerKeyword', ''))} | "
+                f"{esc(api.get('riskLevel', 'high'))} | {api.get('excludeFromPerf', True)} |"
             )
     else:
         lines.append("未识别到危险接口。")
@@ -320,32 +327,42 @@ def gen_readme(model, prefix):
 
 def main():
     if len(sys.argv) < 2:
-        print("用法: python generate_markdown.py <test_model.json> [输出目录]")
+        print("用法: python generate_markdown.py <test_model.json> [reports_dir] [risks_dir]")
+        print("  reports_dir 和 risks_dir 可选，默认均使用 test_model.json 所在目录")
         sys.exit(1)
 
     model_path = sys.argv[1]
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(model_path)
+    reports_dir = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(model_path)
+    risks_dir = sys.argv[3] if len(sys.argv) > 3 else reports_dir
 
-    ensure_output_dir(output_dir)
+    ensure_output_dir(reports_dir)
+    ensure_output_dir(risks_dir)
 
     model = load_model(model_path)
     prefix = get_output_prefix(model)
 
-    # 生成所有 Markdown 文件
-    files = {
+    # Reports 目录文件
+    report_files = {
         "scan_summary.md": gen_scan_summary(model, prefix),
         "api_list.md": gen_api_list(model),
         "test_cases.md": gen_test_cases(model),
-        "risk_report.md": gen_risk_report(model),
-        "manual_confirm_items.md": gen_manual_confirm(model),
         "dangerous_api_list.md": gen_dangerous_apis(model),
         "expected_result_reference.md": gen_expected_result_reference(),
         "result_jtl_parse_rule.md": gen_jtl_parse_rule(),
         "README.md": gen_readme(model, prefix),
     }
 
-    for filename, content in files.items():
-        write_file(os.path.join(output_dir, filename), content)
+    # Risks 目录文件
+    risk_files = {
+        "risk_report.md": gen_risk_report(model),
+        "manual_confirm_items.md": gen_manual_confirm(model),
+    }
+
+    for filename, content in report_files.items():
+        write_file(os.path.join(reports_dir, filename), content)
+
+    for filename, content in risk_files.items():
+        write_file(os.path.join(risks_dir, filename), content)
 
     print("Markdown 报告生成完成")
 

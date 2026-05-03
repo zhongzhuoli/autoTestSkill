@@ -110,22 +110,6 @@ description: >
 - **泛型包装类**（如 `Result<T>`）：尝试解析泛型参数；无法解析时标记 `needManualConfirm`
 - **Map<String,Object>/JSONObject 请求体**：标记 `needManualConfirm`，建议用户补充接口文档
 
-**用例编号**：`TC_{MODULE}_{ACTION}_{SEQ}`
-
-**危险接口识别**：delete/remove/pay/refund/transfer/approve/submit 等关键词 → 标记 high risk，不加入性能压测
-
-**接口链路**：尝试识别 create→detail→update→list→delete 链路；跨模块链路仅标记不默认纳入
-
-**禁止伪造**：不得伪造源码中不存在的字段、token、业务状态、数据库 ID 或鉴权规则
-
-**特殊场景处理：**
-- **文件上传**（`@RequestPart`/`MultipartFile`）：标记 `needManualConfirm`，在 requestBody 中提示需配置测试文件路径
-- **Date/LocalDateTime 字段**：生成 ISO 格式（`2024-01-01T00:00:00`）作为正常值，非法格式作为异常值
-- **BigDecimal/Number 字段**：测试负数、零、极大值
-- **Boolean 字段**：测试 `true`、`false`、非布尔值（如 `"yes"`）
-- **泛型包装类**（如 `Result<T>`）：尝试解析泛型参数；无法解析时标记 `needManualConfirm`
-- **Map<String,Object>/JSONObject 请求体**：标记 `needManualConfirm`，建议用户补充接口文档
-
 ### 阶段四：构建 JSON 中间模型
 
 将扫描结果和测试用例整合为 `test_model.json`，结构如下：
@@ -135,6 +119,7 @@ description: >
   "projectName": "",
   "scanMode": "full|module|controller",
   "generationMode": "smoke|standard|strict|security|performance",
+  "jmeterMode": "csv-driven|per-case",
   "moduleName": "",
   "controllerName": "",
   "scanPath": "",
@@ -149,12 +134,55 @@ description: >
     "危险接口": 0,
     "生成测试用例数量": 0
   },
-  "apis": [],
+  "apis": [
+    {
+      "moduleName": "",
+      "controllerName": "",
+      "apiName": "",
+      "method": "GET|POST|PUT|DELETE|PATCH",
+      "path": "",
+      "requestBodyType": "",
+      "authRequired": false,
+      "dangerous": false,
+      "parseStatus": "完整|部分|失败"
+    }
+  ],
   "testCases": [],
-  "risks": [],
-  "manualConfirmItems": [],
-  "dangerousApis": [],
-  "crossModuleDependencies": []
+  "risks": [
+    {
+      "api": "",
+      "riskType": "",
+      "reason": "",
+      "suggestion": ""
+    }
+  ],
+  "manualConfirmItems": [
+    {
+      "id": "",
+      "type": "",
+      "location": "",
+      "problem": "",
+      "suggestion": ""
+    }
+  ],
+  "dangerousApis": [
+    {
+      "apiName": "",
+      "method": "",
+      "path": "",
+      "dangerKeyword": "",
+      "riskLevel": "high",
+      "excludeFromPerf": true
+    }
+  ],
+  "crossModuleDependencies": [
+    {
+      "from": "",
+      "to": "",
+      "type": "",
+      "description": ""
+    }
+  ]
 }
 ```
 
@@ -185,7 +213,7 @@ echo "api-test-output-$(date +%Y%m%d%H%M%S%3N)"
 python scripts/generate_jmx.py ${OUTPUT_DIR}/test_model.json ${OUTPUT_DIR}/03_jmeter/
 python scripts/generate_csv.py ${OUTPUT_DIR}/test_model.json ${OUTPUT_DIR}/03_jmeter/
 python scripts/generate_excel.py ${OUTPUT_DIR}/test_model.json ${OUTPUT_DIR}/02_test_cases/
-python scripts/generate_markdown.py ${OUTPUT_DIR}/test_model.json ${OUTPUT_DIR}/04_reports/
+python scripts/generate_markdown.py ${OUTPUT_DIR}/test_model.json ${OUTPUT_DIR}/04_reports/ ${OUTPUT_DIR}/05_risks/
 ```
 
 注意：Markdown 报告中的 `scan_summary.md`、`api_list.md`、`test_cases.md`、`README.md` 由脚本生成到 `${OUTPUT_DIR}/` 根目录，风险和参考文档生成到对应子目录。
